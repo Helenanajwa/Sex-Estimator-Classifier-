@@ -9,16 +9,31 @@ import random
 main = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
 
+# Force CPU usage
+tf.config.set_visible_devices([], 'GPU')
+physical_devices = tf.config.list_physical_devices('GPU')
+if not physical_devices:
+    logger.info("No GPU detected, using CPU")
+else:
+    logger.warning(f"GPU detected but disabled: {physical_devices}")
+
 # Optional: Set random seed for consistent predictions
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
+# Verify model files exist
+model_paths = ['model/best_model.h5', 'model/best_model_AP.h5', 'model/xray_classifier.h5']
+for path in model_paths:
+    if not os.path.exists(path):
+        logger.error(f"Model file not found: {path}")
+        raise FileNotFoundError(f"Model file not found: {path}")
+
 # Load models once for efficiency
 try:
-    model_lat = tf.keras.models.load_model('model.py/best_model.h5')
-    model_ap = tf.keras.models.load_model('model.py/best_model_AP.h5')
-    xray_classifier = tf.keras.models.load_model('model.py/xray_classifier.h5')
+    model_lat = tf.keras.models.load_model('model/best_model.h5')
+    model_ap = tf.keras.models.load_model('model/best_model_AP.h5')
+    xray_classifier = tf.keras.models.load_model('model/xray_classifier.h5')
     logger.info("Models loaded successfully")
 except Exception as e:
     logger.error(f"Model loading failed: {str(e)}")
@@ -77,12 +92,13 @@ def collaborate():
         return redirect(url_for('auth.login'))
     return render_template('collaborate.html')
 
-
 # ----------------- ANALYSIS ROUTE -----------------
 @main.route('/analyze', methods=['POST'])
 def analyze():
+    logger.info("Starting analyze route")
     ap_file = request.files.get('xray_ap')
     lat_files = [f for k, f in request.files.items() if k.startswith('xray_lat_') and f.filename != '']
+    logger.info(f"Received AP file: {ap_file.filename if ap_file else None}, LAT files: {[f.filename for f in lat_files]}")
 
     # Store temporary file paths
     temp_files = []
@@ -92,7 +108,8 @@ def analyze():
         filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
         ap_file.save(filepath_ap)
         temp_files.append(filepath_ap)
-        is_xray, _ = is_xray_image(filepath_ap)
+        is_xray, confidence = is_xray_image(filepath_ap)
+        logger.info(f"AP X-ray check: is_xray={is_xray}, confidence={confidence}")
         if not is_xray:
             cleanup_files(temp_files)
             return jsonify({'success': False, 'error': 'Please upload the specific type of AP view X-ray.'}), 400
@@ -101,7 +118,8 @@ def analyze():
         filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
         lf.save(filepath_lat)
         temp_files.append(filepath_lat)
-        is_xray, _ = is_xray_image(filepath_lat)
+        is_xray, confidence = is_xray_image(filepath_lat)
+        logger.info(f"LAT X-ray check: is_xray={is_xray}, confidence={confidence}")
         if not is_xray:
             cleanup_files(temp_files)
             return jsonify({'success': False, 'error': 'Please upload the specific type of Lateral view X-ray.'}), 400
@@ -116,6 +134,7 @@ def analyze():
         gender = 'Female' if pred[0][0] > 0.5 else 'Male'
         conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
         ap_result = {'gender': gender, 'confidence': conf}
+        logger.info(f"AP prediction: gender={gender}, confidence={conf}")
 
     if lat_files:
         confs = []
@@ -127,9 +146,11 @@ def analyze():
             conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
             confs.append(conf)
             genders.append(gender)
+            logger.info(f"LAT prediction: gender={gender}, confidence={conf}")
         final_gender = max(set(genders), key=genders.count)
         final_conf = round(sum(confs)/len(confs), 1)
         lat_result = {'gender': final_gender, 'confidence': final_conf}
+        logger.info(f"LAT final result: gender={final_gender}, confidence={final_conf}")
 
     # --- Step 3: Cleanup ---
     cleanup_files(temp_files)
