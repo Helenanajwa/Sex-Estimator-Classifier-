@@ -1,22 +1,22 @@
 from flask import Flask
 import os
-import logging
 from routes import main
 from auth import auth
 
+# Initialize Flask app
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
-# Config
+# Configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Load Routes
+# Register Blueprints
 app.register_blueprint(auth)
 app.register_blueprint(main)
 
-# Run App
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))  # Use Render's PORT or fallback to 5000
-    app.run(host='0.0.0.0', port=port, debug=True)
+# Optional: Basic root route for health check
+@app.route("/")
+def home():
+    return "Sex Estimator Classifier API is running"
