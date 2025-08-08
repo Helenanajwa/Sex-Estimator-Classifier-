@@ -2,5 +2,9 @@ services:
   - type: web
     name: skull-xray-app
     env: python
-    buildCommand: ./build.sh
-    startCommand: python app.py
+    plan: free
+    branch: main  # Change if you're using a different GitHub branch
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    autoDeploy: true
+
