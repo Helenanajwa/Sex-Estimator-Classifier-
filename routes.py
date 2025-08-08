@@ -9,26 +9,10 @@ import random
 main = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
 
-# Force CPU usage for consistency
-tf.config.set_visible_devices([], 'GPU')
-physical_devices = tf.config.list_physical_devices('GPU')
-if not physical_devices:
-    logger.info("No GPU detected, using CPU")
-else:
-    logger.warning(f"GPU detected but disabled: {physical_devices}")
-
-# Set random seed for reproducible predictions
+# Optional: Set random seed for consistent predictions
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
-
-# Verify model files exist
-model_paths = ['model.py/best_model.h5', 'model.py/best_model_AP.h5', 'model.py/xray_classifier.h5']
-for path in model_paths:
-    if not os.path.exists(path):
-        logger.error(f"Model file not found: {path}")
-        raise FileNotFoundError(f"Model file not found: {path}")
-    logger.info(f"Model file found: {path}")
 
 # Load models once for efficiency
 try:
@@ -46,31 +30,21 @@ def allowed_file(filename, app):
 
 def preprocess_image(img_path, target_size=(256, 256)):
     """Preprocess image for model prediction"""
-    logger.info(f"Preprocessing image: {img_path}")
-    try:
-        img = tf.keras.utils.load_img(
-            img_path,
-            color_mode='rgb',
-            target_size=target_size
-        )
-        img_array = tf.keras.utils.img_to_array(img) / 255.0
-        return np.expand_dims(img_array, axis=0)
-    except Exception as e:
-        logger.error(f"Image preprocessing failed for {img_path}: {str(e)}")
-        raise
+    img = tf.keras.utils.load_img(
+        img_path,
+        color_mode='rgb',
+        target_size=target_size
+    )
+    img_array = tf.keras.utils.img_to_array(img) / 255.0
+    return np.expand_dims(img_array, axis=0)
 
 def is_xray_image(img_path):
     """Check if the uploaded image is an X-ray using the classifier"""
-    try:
-        processed_img = preprocess_image(img_path, target_size=(128, 128))
-        prediction = xray_classifier.predict(processed_img)
-        is_xray = prediction[0][0] > 0.7
-        confidence = float(prediction[0][0]) if is_xray else float(1 - prediction[0][0])
-        logger.info(f"X-ray check for {img_path}: is_xray={is_xray}, confidence={confidence}")
-        return is_xray, confidence
-    except Exception as e:
-        logger.error(f"X-ray classification failed for {img_path}: {str(e)}")
-        raise
+    processed_img = preprocess_image(img_path, target_size=(128, 128))
+    prediction = xray_classifier.predict(processed_img)
+    is_xray = prediction[0][0] > 0.7
+    confidence = float(prediction[0][0]) if is_xray else float(1 - prediction[0][0])
+    return is_xray, confidence
 
 # ----------------- MAIN PAGES -----------------
 @main.route('/')
@@ -103,90 +77,67 @@ def collaborate():
         return redirect(url_for('auth.login'))
     return render_template('collaborate.html')
 
+
 # ----------------- ANALYSIS ROUTE -----------------
 @main.route('/analyze', methods=['POST'])
 def analyze():
-    logger.info("Starting analyze route")
-    try:
-        ap_file = request.files.get('xray_ap')
-        lat_files = [f for k, f in request.files.items() if k.startswith('xray_lat_') and f.filename != '']
-        logger.info(f"Received AP file: {ap_file.filename if ap_file else None}, LAT files: {[f.filename for f in lat_files]}")
+    ap_file = request.files.get('xray_ap')
+    lat_files = [f for k, f in request.files.items() if k.startswith('xray_lat_') and f.filename != '']
 
-        # Store temporary file paths
-        temp_files = []
+    # Store temporary file paths
+    temp_files = []
 
-        # --- Step 1: Validate all files are X-rays ---
-        if ap_file and ap_file.filename != '':
-            if not allowed_file(ap_file.filename, current_app):
-                logger.error(f"Invalid file type for AP: {ap_file.filename}")
-                return jsonify({'success': False, 'error': 'Invalid file type for AP view.'}), 400
-            filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
-            ap_file.save(filepath_ap)
-            temp_files.append(filepath_ap)
-            is_xray, confidence = is_xray_image(filepath_ap)
-            logger.info(f"AP X-ray check: is_xray={is_xray}, confidence={confidence}")
-            if not is_xray:
-                cleanup_files(temp_files)
-                return jsonify({'success': False, 'error': 'Please upload a valid AP view X-ray.'}), 400
+    # --- Step 1: Validate all files are X-rays ---
+    if ap_file and ap_file.filename != '':
+        filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
+        ap_file.save(filepath_ap)
+        temp_files.append(filepath_ap)
+        is_xray, _ = is_xray_image(filepath_ap)
+        if not is_xray:
+            cleanup_files(temp_files)
+            return jsonify({'success': False, 'error': 'Please upload the specific type of AP view X-ray.'}), 400
 
+    for lf in lat_files:
+        filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
+        lf.save(filepath_lat)
+        temp_files.append(filepath_lat)
+        is_xray, _ = is_xray_image(filepath_lat)
+        if not is_xray:
+            cleanup_files(temp_files)
+            return jsonify({'success': False, 'error': 'Please upload the specific type of Lateral view X-ray.'}), 400
+
+    # --- Step 2: Run predictions only if all passed ---
+    ap_result = None
+    lat_result = None
+
+    if ap_file and ap_file.filename != '':
+        processed = preprocess_image(filepath_ap, target_size=(224, 224))
+        pred = model_ap.predict(processed)
+        gender = 'Female' if pred[0][0] > 0.5 else 'Male'
+        conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
+        ap_result = {'gender': gender, 'confidence': conf}
+
+    if lat_files:
+        confs = []
+        genders = []
         for lf in lat_files:
-            if not allowed_file(lf.filename, current_app):
-                logger.error(f"Invalid file type for LAT: {lf.filename}")
-                cleanup_files(temp_files)
-                return jsonify({'success': False, 'error': 'Invalid file type for Lateral view.'}), 400
-            filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
-            lf.save(filepath_lat)
-            temp_files.append(filepath_lat)
-            is_xray, confidence = is_xray_image(filepath_lat)
-            logger.info(f"LAT X-ray check: is_xray={is_xray}, confidence={confidence}")
-            if not is_xray:
-                cleanup_files(temp_files)
-                return jsonify({'success': False, 'error': 'Please upload a valid Lateral view X-ray.'}), 400
-
-        # --- Step 2: Run predictions only if all passed ---
-        ap_result = None
-        lat_result = None
-
-        if ap_file and ap_file.filename != '':
-            processed = preprocess_image(filepath_ap, target_size=(224, 224))
-            pred = model_ap.predict(processed)
+            processed = preprocess_image(os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename)), target_size=(224, 224))
+            pred = model_lat.predict(processed)
             gender = 'Female' if pred[0][0] > 0.5 else 'Male'
             conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
-            ap_result = {'gender': gender, 'confidence': conf}
-            logger.info(f"AP prediction: gender={gender}, confidence={conf}")
+            confs.append(conf)
+            genders.append(gender)
+        final_gender = max(set(genders), key=genders.count)
+        final_conf = round(sum(confs)/len(confs), 1)
+        lat_result = {'gender': final_gender, 'confidence': final_conf}
 
-        if lat_files:
-            confs = []
-            genders = []
-            for lf in lat_files:
-                processed = preprocess_image(os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename)), target_size=(224, 224))
-                pred = model_lat.predict(processed)
-                gender = 'Female' if pred[0][0] > 0.5 else 'Male'
-                conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
-                confs.append(conf)
-                genders.append(gender)
-                logger.info(f"LAT prediction: gender={gender}, confidence={conf}")
-            final_gender = max(set(genders), key=genders.count)
-            final_conf = round(sum(confs)/len(confs), 1)
-            lat_result = {'gender': final_gender, 'confidence': final_conf}
-            logger.info(f"LAT final result: gender={final_gender}, confidence={final_conf}")
+    # --- Step 3: Cleanup ---
+    cleanup_files(temp_files)
 
-        # --- Step 3: Cleanup ---
-        cleanup_files(temp_files)
-
-        return jsonify({'success': True, 'AP': ap_result, 'LAT': lat_result})
-
-    except Exception as e:
-        logger.error(f"Analyze route failed: {str(e)}")
-        cleanup_files(temp_files)
-        return jsonify({'success': False, 'error': f'Analysis failed: {str(e)}'}), 500
+    return jsonify({'success': True, 'AP': ap_result, 'LAT': lat_result})
 
 def cleanup_files(file_list):
     """Remove temporary uploaded files"""
     for file_path in file_list:
         if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-                logger.info(f"Cleaned up file: {file_path}")
-            except Exception as e:
-                logger.error(f"Failed to clean up file {file_path}: {str(e)}")
+            os.remove(file_path)
