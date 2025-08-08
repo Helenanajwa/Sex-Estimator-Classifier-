@@ -15,15 +15,19 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'supersecretkey')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+logging.info(f"Uploads directory created: {app.config['UPLOAD_FOLDER']}")
 
 # Register Blueprints
 app.register_blueprint(auth)
 app.register_blueprint(main)
 
-# Optional: Basic root route for health check
+# Basic root route for health check
 @app.route("/")
 def home():
+    logging.info("Root route accessed")
     return "Sex Estimator Classifier API is running"
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.getenv('PORT', 10000))  # Use Render's default port 10000
+    logging.info(f"Starting Flask app on port {port}")
+    app.run(host='0.0.0.0', port=port)
