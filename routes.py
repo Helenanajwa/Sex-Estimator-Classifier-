@@ -17,23 +17,24 @@ if not physical_devices:
 else:
     logger.warning(f"GPU detected but disabled: {physical_devices}")
 
-# Optional: Set random seed for consistent predictions
+# Set random seed for consistent predictions
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
 # Verify model files exist
-model_paths = ['model/best_model.h5', 'model/best_model_AP.h5', 'model/xray_classifier.h5']
+model_paths = ['model.py/best_model.h5', 'model.py/best_model_AP.h5', 'model.py/xray_classifier.h5']
 for path in model_paths:
     if not os.path.exists(path):
         logger.error(f"Model file not found: {path}")
         raise FileNotFoundError(f"Model file not found: {path}")
+    logger.info(f"Model file found: {path}")
 
 # Load models once for efficiency
 try:
-    model_lat = tf.keras.models.load_model('model/best_model.h5')
-    model_ap = tf.keras.models.load_model('model/best_model_AP.h5')
-    xray_classifier = tf.keras.models.load_model('model/xray_classifier.h5')
+    model_lat = tf.keras.models.load_model('model.py/best_model.h5')
+    model_ap = tf.keras.models.load_model('model.py/best_model_AP.h5')
+    xray_classifier = tf.keras.models.load_model('model.py/xray_classifier.h5')
     logger.info("Models loaded successfully")
 except Exception as e:
     logger.error(f"Model loading failed: {str(e)}")
@@ -45,6 +46,7 @@ def allowed_file(filename, app):
 
 def preprocess_image(img_path, target_size=(256, 256)):
     """Preprocess image for model prediction"""
+    logger.info(f"Preprocessing image: {img_path}")
     img = tf.keras.utils.load_img(
         img_path,
         color_mode='rgb',
@@ -59,6 +61,7 @@ def is_xray_image(img_path):
     prediction = xray_classifier.predict(processed_img)
     is_xray = prediction[0][0] > 0.7
     confidence = float(prediction[0][0]) if is_xray else float(1 - prediction[0][0])
+    logger.info(f"X-ray check for {img_path}: is_xray={is_xray}, confidence={confidence}")
     return is_xray, confidence
 
 # ----------------- MAIN PAGES -----------------
