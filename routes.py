@@ -5,26 +5,46 @@ import numpy as np
 import os
 import logging
 import random
-import traceback
 
 main = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)  # Ensure debug messages are shown
 
-# Optional: Set random seed for consistent predictions
+# Force CPU usage
+tf.config.set_visible_devices([], 'GPU')
+physical_devices = tf.config.list_physical_devices('GPU')
+if not physical_devices:
+    logger.info("No GPU detected, using CPU")
+else:
+    logger.warning(f"GPU detected but disabled: {physical_devices}")
+
+# Set random seed for consistent predictions
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
+# Log current directory and contents for debugging
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Root directory contents: {os.listdir('.')}")
+if os.path.exists('model.py'):
+    logger.info(f"model.py directory contents: {os.listdir('model.py')}")
+else:
+    logger.error("model.py directory not found")
+
+# Verify model files exist
+model_paths = ['model.py/best_model.h5', 'model.py/best_model_AP.h5']
+for path in model_paths:
+    if not os.path.exists(path):
+        logger.error(f"Model file not found: {path}")
+        raise FileNotFoundError(f"Model file not found: {path}")
+    logger.info(f"Model file found: {path}")
+
 # Load models once for efficiency
 try:
-    logger.info("Loading models...")
     model_lat = tf.keras.models.load_model('model.py/best_model.h5')
     model_ap = tf.keras.models.load_model('model.py/best_model_AP.h5')
     logger.info("Models loaded successfully")
 except Exception as e:
     logger.error(f"Model loading failed: {str(e)}")
-    traceback.print_exc()
     raise
 
 def allowed_file(filename, app):
@@ -33,6 +53,7 @@ def allowed_file(filename, app):
 
 def preprocess_image(img_path, target_size=(256, 256)):
     """Preprocess image for model prediction"""
+    logger.info(f"Preprocessing image: {img_path}")
     img = tf.keras.utils.load_img(
         img_path,
         color_mode='rgb',
@@ -72,72 +93,60 @@ def collaborate():
         return redirect(url_for('auth.login'))
     return render_template('collaborate.html')
 
-
 # ----------------- ANALYSIS ROUTE -----------------
 @main.route('/analyze', methods=['POST'])
 def analyze():
-    logger.debug("Received /analyze request")
-    try:
-        ap_file = request.files.get('xray_ap')
-        lat_files = [f for k, f in request.files.items() if k.startswith('xray_lat_') and f.filename != '']
+    logger.info("Starting analyze route")
+    ap_file = request.files.get('xray_ap')
+    lat_files = [f for k, f in request.files.items() if k.startswith('xray_lat_') and f.filename != '']
+    logger.info(f"Received AP file: {ap_file.filename if ap_file else None}, LAT files: {[f.filename for f in lat_files]}")
 
-        logger.debug(f"AP file: {ap_file.filename if ap_file else None}")
-        logger.debug(f"LAT files: {[f.filename for f in lat_files]}")
+    # Store temporary file paths
+    temp_files = []
 
-        # Store temporary file paths
-        temp_files = []
+    # --- Step 1: Save files without X-ray validation ---
+    if ap_file and ap_file.filename != '':
+        filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
+        ap_file.save(filepath_ap)
+        temp_files.append(filepath_ap)
 
-        # --- Step 1: Save files (no X-ray validation anymore) ---
-        if ap_file and ap_file.filename != '':
-            filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
-            ap_file.save(filepath_ap)
-            temp_files.append(filepath_ap)
-            logger.debug(f"Saved AP file to {filepath_ap}")
+    for lf in lat_files:
+        filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
+        lf.save(filepath_lat)
+        temp_files.append(filepath_lat)
 
+    # --- Step 2: Run predictions ---
+    ap_result = None
+    lat_result = None
+
+    if ap_file and ap_file.filename != '':
+        processed = preprocess_image(filepath_ap, target_size=(224, 224))
+        pred = model_ap.predict(processed)
+        gender = 'Female' if pred[0][0] > 0.5 else 'Male'
+        conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
+        ap_result = {'gender': gender, 'confidence': conf}
+        logger.info(f"AP prediction: gender={gender}, confidence={conf}")
+
+    if lat_files:
+        confs = []
+        genders = []
         for lf in lat_files:
-            filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
-            lf.save(filepath_lat)
-            temp_files.append(filepath_lat)
-            logger.debug(f"Saved LAT file to {filepath_lat}")
-
-        # --- Step 2: Run predictions ---
-        ap_result = None
-        lat_result = None
-
-        if ap_file and ap_file.filename != '':
-            processed = preprocess_image(filepath_ap, target_size=(224, 224))
-            pred = model_ap.predict(processed)
+            processed = preprocess_image(os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename)), target_size=(224, 224))
+            pred = model_lat.predict(processed)
             gender = 'Female' if pred[0][0] > 0.5 else 'Male'
             conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
-            ap_result = {'gender': gender, 'confidence': conf}
-            logger.debug(f"AP prediction: {ap_result}")
+            confs.append(conf)
+            genders.append(gender)
+            logger.info(f"LAT prediction: gender={gender}, confidence={conf}")
+        final_gender = max(set(genders), key=genders.count)
+        final_conf = round(sum(confs)/len(confs), 1)
+        lat_result = {'gender': final_gender, 'confidence': final_conf}
+        logger.info(f"LAT final result: gender={final_gender}, confidence={final_conf}")
 
-        if lat_files:
-            confs = []
-            genders = []
-            for lf in lat_files:
-                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
-                processed = preprocess_image(filepath, target_size=(224, 224))
-                pred = model_lat.predict(processed)
-                gender = 'Female' if pred[0][0] > 0.5 else 'Male'
-                conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
-                confs.append(conf)
-                genders.append(gender)
-            final_gender = max(set(genders), key=genders.count)
-            final_conf = round(sum(confs)/len(confs), 1)
-            lat_result = {'gender': final_gender, 'confidence': final_conf}
-            logger.debug(f"LAT prediction: {lat_result}")
+    # --- Step 3: Cleanup ---
+    cleanup_files(temp_files)
 
-        # --- Step 3: Cleanup ---
-        cleanup_files(temp_files)
-        logger.debug("Temporary files cleaned up")
-
-        return jsonify({'success': True, 'AP': ap_result, 'LAT': lat_result})
-
-    except Exception as e:
-        logger.error(f"Error in /analyze: {str(e)}")
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return jsonify({'success': True, 'AP': ap_result, 'LAT': lat_result})
 
 def cleanup_files(file_list):
     """Remove temporary uploaded files"""
