@@ -101,6 +101,7 @@ def collaborate():
 
 # ----------------- ANALYSIS ROUTE -----------------
 @main.route('/analyze', methods=['POST'])
+@main.route('/analyze/', methods=['POST'])  # Handle trailing slash
 def analyze():
     logger.info("Starting analyze route")
     ap_file = request.files.get('xray_ap')
