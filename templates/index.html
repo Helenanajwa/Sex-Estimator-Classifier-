@@ -326,7 +326,15 @@
                 const res = await fetch('/analyze', { method: 'POST', body: formData });
                 
                 if (!res.ok) {
-                    throw new Error(`HTTP error! status: ${res.status}`);
+                    if (res.status === 502) {
+                        throw new Error("Server error: Unable to process the request due to a server issue. Please try again later.");
+                    } else if (res.status === 500) {
+                        throw new Error("Server error: Model processing failed. Please ensure the images are valid.");
+                    } else if (res.status === 400) {
+                        throw new Error("Invalid request: Please check that the uploaded files are in JPG, JPEG, or PNG format.");
+                    } else {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
                 }
                 
                 const data = await res.json();
@@ -380,7 +388,7 @@
                 }
             } catch (err) {
                 console.error("Analysis error:", err);
-                showError("Error", "Please upload the specific type of radiological images and skeletal regions.");
+                showError("Error", err.message);
                 document.getElementById('loadingSpinner').style.display = 'none';
                 document.getElementById('analyzeBtn').style.display = 'inline-block';
             }
