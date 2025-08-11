@@ -26,6 +26,7 @@ try:
     app.register_blueprint(auth)
     app.register_blueprint(main)
     logging.info("Blueprints registered successfully")
+    logging.info(f"Registered routes: {[rule.rule for rule in app.url_map.iter_rules()]}")
 except Exception as e:
     logging.error(f"Failed to register blueprints: {str(e)}")
     raise
