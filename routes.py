@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, session, request, jsonify, current_app 
+from flask import Blueprint, render_template, redirect, url_for, session, request, jsonify, current_app
 from werkzeug.utils import secure_filename
 import tensorflow as tf
 import numpy as np
@@ -14,7 +14,7 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
-# Load models once for efficiency (only AP and LAT models now)
+# Load models once for efficiency
 try:
     model_lat = tf.keras.models.load_model('model.py/best_model.h5')
     model_ap = tf.keras.models.load_model('model.py/best_model_AP.h5')
@@ -77,7 +77,7 @@ def analyze():
     # Store temporary file paths
     temp_files = []
 
-    # --- Step 1: Save files (no X-ray validation) ---
+    # --- Step 1: Save files without X-ray validation ---
     if ap_file and ap_file.filename != '':
         filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
         ap_file.save(filepath_ap)
@@ -103,10 +103,7 @@ def analyze():
         confs = []
         genders = []
         for lf in lat_files:
-            processed = preprocess_image(
-                os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename)),
-                target_size=(224, 224)
-            )
+            processed = preprocess_image(os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename)), target_size=(224, 224))
             pred = model_lat.predict(processed)
             gender = 'Female' if pred[0][0] > 0.5 else 'Male'
             conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
