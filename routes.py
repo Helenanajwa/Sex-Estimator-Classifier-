@@ -28,24 +28,30 @@ logger.info(f"Root directory contents: {os.listdir('.')}")
 if os.path.exists('model.py'):
     logger.info(f"model.py directory contents: {os.listdir('model.py')}")
 else:
-    logger.error("model.py directory not found")
+    logger.warning("model.py directory not found")
 
-# Verify model files exist
+# Initialize model variables
+model_lat = None
+model_ap = None
+
+# Verify and load model files
 model_paths = ['model.py/best_model.h5', 'model.py/best_model_AP.h5']
 for path in model_paths:
     if not os.path.exists(path):
-        logger.error(f"Model file not found: {path}")
-        raise FileNotFoundError(f"Model file not found: {path}")
-    logger.info(f"Model file found: {path}")
+        logger.warning(f"Model file not found: {path}. Analysis route will return error if used.")
+    else:
+        logger.info(f"Model file found: {path}")
 
-# Load models once for efficiency
+# Load models if available
 try:
-    model_lat = tf.keras.models.load_model('model.py/best_model.h5')
-    model_ap = tf.keras.models.load_model('model.py/best_model_AP.h5')
-    logger.info("Models loaded successfully")
+    if os.path.exists('model.py/best_model.h5'):
+        model_lat = tf.keras.models.load_model('model.py/best_model.h5')
+        logger.info("Lateral model loaded successfully")
+    if os.path.exists('model.py/best_model_AP.h5'):
+        model_ap = tf.keras.models.load_model('model.py/best_model_AP.h5')
+        logger.info("AP model loaded successfully")
 except Exception as e:
-    logger.error(f"Model loading failed: {str(e)}")
-    raise
+    logger.error(f"Model loading failed: {str(e)}. Analysis route will return error if used.")
 
 def allowed_file(filename, app):
     return '.' in filename and \
@@ -101,10 +107,18 @@ def analyze():
     lat_files = [f for k, f in request.files.items() if k.startswith('xray_lat_') and f.filename != '']
     logger.info(f"Received AP file: {ap_file.filename if ap_file else None}, LAT files: {[f.filename for f in lat_files]}")
 
+    # Check if models are loaded
+    if model_ap is None and ap_file:
+        logger.error("AP model not loaded")
+        return jsonify({'success': False, 'error': 'AP model not available'}), 500
+    if model_lat is None and lat_files:
+        logger.error("Lateral model not loaded")
+        return jsonify({'success': False, 'error': 'Lateral model not available'}), 500
+
     # Store temporary file paths
     temp_files = []
 
-    # --- Step 1: Save files without X-ray validation ---
+    # --- Step 1: Save files ---
     if ap_file and ap_file.filename != '':
         filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
         ap_file.save(filepath_ap)
@@ -119,29 +133,39 @@ def analyze():
     ap_result = None
     lat_result = None
 
-    if ap_file and ap_file.filename != '':
-        processed = preprocess_image(filepath_ap, target_size=(224, 224))
-        pred = model_ap.predict(processed)
-        gender = 'Female' if pred[0][0] > 0.5 else 'Male'
-        conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
-        ap_result = {'gender': gender, 'confidence': conf}
-        logger.info(f"AP prediction: gender={gender}, confidence={conf}")
-
-    if lat_files:
-        confs = []
-        genders = []
-        for lf in lat_files:
-            processed = preprocess_image(os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename)), target_size=(224, 224))
-            pred = model_lat.predict(processed)
+    if ap_file and ap_file.filename != '' and model_ap:
+        try:
+            processed = preprocess_image(filepath_ap, target_size=(224, 224))
+            pred = model_ap.predict(processed)
             gender = 'Female' if pred[0][0] > 0.5 else 'Male'
             conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
-            confs.append(conf)
-            genders.append(gender)
-            logger.info(f"LAT prediction: gender={gender}, confidence={conf}")
-        final_gender = max(set(genders), key=genders.count)
-        final_conf = round(sum(confs)/len(confs), 1)
-        lat_result = {'gender': final_gender, 'confidence': final_conf}
-        logger.info(f"LAT final result: gender={final_gender}, confidence={final_conf}")
+            ap_result = {'gender': gender, 'confidence': conf}
+            logger.info(f"AP prediction: gender={gender}, confidence={conf}")
+        except Exception as e:
+            logger.error(f"AP prediction failed: {str(e)}")
+            cleanup_files(temp_files)
+            return jsonify({'success': False, 'error': f'AP prediction failed: {str(e)}'}), 500
+
+    if lat_files and model_lat:
+        try:
+            confs = []
+            genders = []
+            for lf in lat_files:
+                processed = preprocess_image(os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename)), target_size=(224, 224))
+                pred = model_lat.predict(processed)
+                gender = 'Female' if pred[0][0] > 0.5 else 'Male'
+                conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
+                confs.append(conf)
+                genders.append(gender)
+                logger.info(f"LAT prediction: gender={gender}, confidence={conf}")
+            final_gender = max(set(genders), key=genders.count)
+            final_conf = round(sum(confs)/len(confs), 1)
+            lat_result = {'gender': final_gender, 'confidence': final_conf}
+            logger.info(f"LAT final result: gender={final_gender}, confidence={final_conf}")
+        except Exception as e:
+            logger.error(f"LAT prediction failed: {str(e)}")
+            cleanup_files(temp_files)
+            return jsonify({'success': False, 'error': f'Lateral prediction failed: {str(e)}'}), 500
 
     # --- Step 3: Cleanup ---
     cleanup_files(temp_files)
