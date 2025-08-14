@@ -5,12 +5,15 @@ import numpy as np
 import os
 import logging
 import random
+import gc
 
 main = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
 
-# Force CPU usage
+# Force CPU usage and optimize TensorFlow
 tf.config.set_visible_devices([], 'GPU')
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
 physical_devices = tf.config.list_physical_devices('GPU')
 if not physical_devices:
     logger.info("No GPU detected, using CPU")
@@ -22,39 +25,25 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
-# Global model variables
-model_ap = None
-model_lat = None
-
-def load_models():
-    """Load TensorFlow models at startup"""
-    global model_ap, model_lat
-    ap_model_path = 'model.py/best_model_AP.h5'
-    lat_model_path = 'model.py/best_model.h5'
-    if not os.path.exists(ap_model_path):
-        logger.error(f"AP model file not found: {ap_model_path}")
-        raise FileNotFoundError(f"AP model file not found: {ap_model_path}")
-    if not os.path.exists(lat_model_path):
-        logger.error(f"Lateral model file not found: {lat_model_path}")
-        raise FileNotFoundError(f"Lateral model file not found: {lat_model_path}")
+def load_model():
+    """Load the AP model on demand"""
+    model_path = 'model.py/best_model_AP.h5'
+    if not os.path.exists(model_path):
+        logger.error(f"Model file not found: {model_path}")
+        raise FileNotFoundError(f"Model file not found: {model_path}")
     try:
-        logger.info("Loading AP model at startup")
-        global model_ap
-        model_ap = tf.keras.models.load_model(ap_model_path)
+        logger.info("Loading AP model")
+        model = tf.keras.models.load_model(model_path)
         logger.info("AP model loaded successfully")
-        logger.info("Loading Lateral model at startup")
-        global model_lat
-        model_lat = tf.keras.models.load_model(lat_model_path)
-        logger.info("Lateral model loaded successfully")
+        return model
     except Exception as e:
-        logger.error(f"Failed to load models: {str(e)}")
+        logger.error(f"Failed to load AP model: {str(e)}")
         raise
 
-# Allowed extensions
 def allowed_file(filename, app):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-def preprocess_image(img_path, target_size=(256, 256)):
+def preprocess_image(img_path, target_size=(64, 64)):
     """Preprocess image for model prediction"""
     logger.info(f"Preprocessing image: {img_path}")
     img = tf.keras.utils.load_img(
@@ -63,7 +52,9 @@ def preprocess_image(img_path, target_size=(256, 256)):
         target_size=target_size
     )
     img_array = tf.keras.utils.img_to_array(img) / 255.0
-    return tf.expand_dims(img_array, axis=0)
+    img_array = tf.expand_dims(img_array, axis=0)
+    gc.collect()
+    return img_array
 
 def cleanup_files(file_list):
     """Remove temporary uploaded files"""
@@ -83,7 +74,7 @@ def index():
             return redirect(url_for('auth.login'))
         except Exception as e:
             logger.error(f"Failed to redirect to auth.login: {str(e)}")
-            return redirect(url_for('main.home'))  # Fallback to home route
+            return redirect(url_for('main.home'))
     return render_template('index.html')
 
 @main.route('/home')
@@ -93,7 +84,7 @@ def home():
             return redirect(url_for('auth.login'))
         except Exception as e:
             logger.error(f"Failed to redirect to auth.login: {str(e)}")
-            return redirect(url_for('main.home'))  # Fallback to home route
+            return redirect(url_for('main.home'))
     return render_template('home.html')
 
 @main.route('/confusion-matrix')
@@ -103,7 +94,7 @@ def model_performance():
             return redirect(url_for('auth.login'))
         except Exception as e:
             logger.error(f"Failed to redirect to auth.login: {str(e)}")
-            return redirect(url_for('main.home'))  # Fallback to home route
+            return redirect(url_for('main.home'))
     return render_template('model_performance.html')
 
 @main.route('/research')
@@ -113,7 +104,7 @@ def research():
             return redirect(url_for('auth.login'))
         except Exception as e:
             logger.error(f"Failed to redirect to auth.login: {str(e)}")
-            return redirect(url_for('main.home'))  # Fallback to home route
+            return redirect(url_for('main.home'))
     return render_template('research.html')
 
 @main.route('/collaborate')
@@ -123,90 +114,58 @@ def collaborate():
             return redirect(url_for('auth.login'))
         except Exception as e:
             logger.error(f"Failed to redirect to auth.login: {str(e)}")
-            return redirect(url_for('main.home'))  # Fallback to home route
+            return redirect(url_for('main.home'))
     return render_template('collaborate.html')
 
 # ----------------- ANALYSIS ROUTE -----------------
 @main.route('/analyze', methods=['POST'])
-@main.route('/analyze/', methods=['POST'])  # Handle trailing slash
+@main.route('/analyze/', methods=['POST'])
 def analyze():
     logger.info("Starting analyze route")
-    ap_file = request.files.get('xray_ap')
-    lat_files = [f for k, f in request.files.items() if k.startswith('xray_lat_') and f.filename != '']
-    logger.info(f"Received AP file: {ap_file.filename if ap_file else None}, LAT files: {[f.filename for f in lat_files]}")
-
+    xray_image = request.files.get('xray_image')
     temp_files = []
-    ap_result, lat_result = None, None
 
-    # Validate and save AP file
-    if ap_file and ap_file.filename != '':
-        if not allowed_file(ap_file.filename, current_app):
-            logger.error("Invalid file type for AP image")
-            return jsonify({'success': False, 'error': 'Invalid file type for AP image'}), 400
-        filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
-        try:
-            ap_file.save(filepath_ap)
-            temp_files.append(filepath_ap)
-            logger.info(f"Saved AP file: {filepath_ap}")
-        except Exception as e:
-            logger.error(f"Failed to save AP file: {str(e)}")
-            return jsonify({'success': False, 'error': f'Failed to save AP file: {str(e)}'}), 500
+    # Validate inputs
+    if not xray_image or xray_image.filename == '':
+        logger.error("No image uploaded")
+        return jsonify({'success': False, 'error': 'No image uploaded'}), 400
+    if not allowed_file(xray_image.filename, current_app):
+        logger.error("Invalid file type for image")
+        return jsonify({'success': False, 'error': 'Invalid file type for image'}), 400
 
-    # Validate and save Lateral files
-    for lf in lat_files:
-        if not allowed_file(lf.filename, current_app):
-            logger.error(f"Invalid file type for Lateral image: {lf.filename}")
-            return jsonify({'success': False, 'error': f'Invalid file type for Lateral image: {lf.filename}'}), 400
-        filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
-        try:
-            lf.save(filepath_lat)
-            temp_files.append(filepath_lat)
-            logger.info(f"Saved Lateral file: {filepath_lat}")
-        except Exception as e:
-            logger.error(f"Failed to save Lateral file: {str(e)}")
-            cleanup_files(temp_files)
-            return jsonify({'success': False, 'error': f'Failed to save Lateral file: {str(e)}'}), 500
+    # Save image
+    filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(xray_image.filename))
+    try:
+        xray_image.save(filepath)
+        temp_files.append(filepath)
+        logger.info(f"Saved image: {filepath}")
+    except Exception as e:
+        logger.error(f"Failed to save image: {str(e)}")
+        return jsonify({'success': False, 'error': f'Failed to save image: {str(e)}'}), 500
 
     try:
-        # AP prediction
-        if ap_file and ap_file.filename != '':
-            try:
-                processed = preprocess_image(filepath_ap, target_size=(224, 224))
-                pred = model_ap.predict(processed, verbose=0)
-                gender = 'Female' if pred[0][0] > 0.5 else 'Male'
-                conf = round(pred[0][0] * 100 if gender == 'Female' else (1 - pred[0][0]) * 100, 1)
-                ap_result = {'gender': gender, 'confidence': conf}
-                logger.info(f"AP prediction: gender={gender}, confidence={conf}")
-                tf.keras.backend.clear_session()
-            except Exception as e:
-                logger.error(f"AP prediction failed: {str(e)}")
-                cleanup_files(temp_files)
-                return jsonify({'success': False, 'error': f'AP prediction failed: {str(e)}'}), 500
+        # Load and predict with AP model
+        model = load_model()
+        processed = preprocess_image(filepath, target_size=(64, 64))
+        pred = model.predict(processed, verbose=0)
+        gender = 'Female' if pred[0][0] > 0.5 else 'Male'
+        conf = round(pred[0][0] * 100 if gender == 'Female' else (1 - pred[0][0]) * 100, 1)
+        result = {'gender': gender, 'confidence': conf}
+        logger.info(f"AP prediction: gender={gender}, confidence={conf}")
 
-        # Lateral prediction
-        if lat_files:
-            try:
-                confs, genders = [], []
-                for lf in lat_files:
-                    filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
-                    processed = preprocess_image(filepath_lat, target_size=(224, 224))
-                    pred = model_lat.predict(processed, verbose=0)
-                    gender = 'Female' if pred[0][0] > 0.5 else 'Male'
-                    conf = round(pred[0][0] * 100 if gender == 'Female' else (1 - pred[0][0]) * 100, 1)
-                    confs.append(conf)
-                    genders.append(gender)
-                    logger.info(f"LAT prediction: gender={gender}, confidence={conf}")
-                final_gender = max(set(genders), key=genders.count)
-                final_conf = round(sum(confs) / len(confs), 1)
-                lat_result = {'gender': final_gender, 'confidence': final_conf}
-                logger.info(f"LAT final result: gender={final_gender}, confidence={final_conf}")
-                tf.keras.backend.clear_session()
-            except Exception as e:
-                logger.error(f"Lateral prediction failed: {str(e)}")
-                cleanup_files(temp_files)
-                return jsonify({'success': False, 'error': f'Lateral prediction failed: {str(e)}'}), 500
+        # Unload model
+        del model
+        tf.keras.backend.clear_session()
+        gc.collect()
+        logger.info("AP model unloaded")
+
+    except Exception as e:
+        logger.error(f"Prediction failed: {str(e)}")
+        cleanup_files(temp_files)
+        return jsonify({'success': False, 'error': f'Prediction failed: {str(e)}'}), 500
 
     finally:
         cleanup_files(temp_files)
+        gc.collect()
 
-    return jsonify({'success': True, 'AP': ap_result, 'LAT': lat_result})
+    return jsonify({'success': True, 'result': result})
