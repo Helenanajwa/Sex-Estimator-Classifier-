@@ -22,6 +22,34 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
+# Global model variables
+model_ap = None
+model_lat = None
+
+def load_models():
+    """Load TensorFlow models at startup"""
+    global model_ap, model_lat
+    ap_model_path = 'model.py/best_model_AP.h5'
+    lat_model_path = 'model.py/best_model.h5'
+    if not os.path.exists(ap_model_path):
+        logger.error(f"AP model file not found: {ap_model_path}")
+        raise FileNotFoundError(f"AP model file not found: {ap_model_path}")
+    if not os.path.exists(lat_model_path):
+        logger.error(f"Lateral model file not found: {lat_model_path}")
+        raise FileNotFoundError(f"Lateral model file not found: {lat_model_path}")
+    try:
+        logger.info("Loading AP model at startup")
+        global model_ap
+        model_ap = tf.keras.models.load_model(ap_model_path)
+        logger.info("AP model loaded successfully")
+        logger.info("Loading Lateral model at startup")
+        global model_lat
+        model_lat = tf.keras.models.load_model(lat_model_path)
+        logger.info("Lateral model loaded successfully")
+    except Exception as e:
+        logger.error(f"Failed to load models: {str(e)}")
+        raise
+
 # Allowed extensions
 def allowed_file(filename, app):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
@@ -35,13 +63,17 @@ def preprocess_image(img_path, target_size=(256, 256)):
         target_size=target_size
     )
     img_array = tf.keras.utils.img_to_array(img) / 255.0
-    return np.expand_dims(img_array, axis=0)
+    return tf.expand_dims(img_array, axis=0)
 
 def cleanup_files(file_list):
     """Remove temporary uploaded files"""
     for file_path in file_list:
         if os.path.exists(file_path):
-            os.remove(file_path)
+            try:
+                os.remove(file_path)
+                logger.info(f"Cleaned up file: {file_path}")
+            except Exception as e:
+                logger.error(f"Failed to clean up file {file_path}: {str(e)}")
 
 # ----------------- MAIN PAGES -----------------
 @main.route('/')
@@ -86,30 +118,45 @@ def analyze():
     temp_files = []
     ap_result, lat_result = None, None
 
-    # Save files
+    # Validate and save AP file
     if ap_file and ap_file.filename != '':
+        if not allowed_file(ap_file.filename, current_app):
+            logger.error("Invalid file type for AP image")
+            return jsonify({'success': False, 'error': 'Invalid file type for AP image'}), 400
         filepath_ap = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(ap_file.filename))
-        ap_file.save(filepath_ap)
-        temp_files.append(filepath_ap)
+        try:
+            ap_file.save(filepath_ap)
+            temp_files.append(filepath_ap)
+            logger.info(f"Saved AP file: {filepath_ap}")
+        except Exception as e:
+            logger.error(f"Failed to save AP file: {str(e)}")
+            return jsonify({'success': False, 'error': f'Failed to save AP file: {str(e)}'}), 500
 
+    # Validate and save Lateral files
     for lf in lat_files:
+        if not allowed_file(lf.filename, current_app):
+            logger.error(f"Invalid file type for Lateral image: {lf.filename}")
+            return jsonify({'success': False, 'error': f'Invalid file type for Lateral image: {lf.filename}'}), 400
         filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
-        lf.save(filepath_lat)
-        temp_files.append(filepath_lat)
+        try:
+            lf.save(filepath_lat)
+            temp_files.append(filepath_lat)
+            logger.info(f"Saved Lateral file: {filepath_lat}")
+        except Exception as e:
+            logger.error(f"Failed to save Lateral file: {str(e)}")
+            cleanup_files(temp_files)
+            return jsonify({'success': False, 'error': f'Failed to save Lateral file: {str(e)}'}), 500
 
     try:
         # AP prediction
         if ap_file and ap_file.filename != '':
             try:
-                logger.info("Loading AP model on demand")
-                model_ap = tf.keras.models.load_model('model.py/best_model_AP.h5')
                 processed = preprocess_image(filepath_ap, target_size=(224, 224))
-                pred = model_ap.predict(processed)
+                pred = model_ap.predict(processed, verbose=0)
                 gender = 'Female' if pred[0][0] > 0.5 else 'Male'
-                conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
+                conf = round(pred[0][0] * 100 if gender == 'Female' else (1 - pred[0][0]) * 100, 1)
                 ap_result = {'gender': gender, 'confidence': conf}
                 logger.info(f"AP prediction: gender={gender}, confidence={conf}")
-                del model_ap
                 tf.keras.backend.clear_session()
             except Exception as e:
                 logger.error(f"AP prediction failed: {str(e)}")
@@ -119,22 +166,20 @@ def analyze():
         # Lateral prediction
         if lat_files:
             try:
-                logger.info("Loading Lateral model on demand")
-                model_lat = tf.keras.models.load_model('model.py/best_model.h5')
                 confs, genders = [], []
                 for lf in lat_files:
-                    processed = preprocess_image(os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename)), target_size=(224, 224))
-                    pred = model_lat.predict(processed)
+                    filepath_lat = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(lf.filename))
+                    processed = preprocess_image(filepath_lat, target_size=(224, 224))
+                    pred = model_lat.predict(processed, verbose=0)
                     gender = 'Female' if pred[0][0] > 0.5 else 'Male'
-                    conf = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
+                    conf = round(pred[0][0] * 100 if gender == 'Female' else (1 - pred[0][0]) * 100, 1)
                     confs.append(conf)
                     genders.append(gender)
                     logger.info(f"LAT prediction: gender={gender}, confidence={conf}")
                 final_gender = max(set(genders), key=genders.count)
-                final_conf = round(sum(confs)/len(confs), 1)
+                final_conf = round(sum(confs) / len(confs), 1)
                 lat_result = {'gender': final_gender, 'confidence': final_conf}
                 logger.info(f"LAT final result: gender={final_gender}, confidence={final_conf}")
-                del model_lat
                 tf.keras.backend.clear_session()
             except Exception as e:
                 logger.error(f"Lateral prediction failed: {str(e)}")
