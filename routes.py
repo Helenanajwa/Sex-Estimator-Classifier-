@@ -29,18 +29,18 @@ np.random.seed(42)
 tf.random.set_seed(42)
 
 def load_model():
-    """Load the AP model on demand"""
-    model_path = 'model.py/best_model_AP.h5'
+    """Load the combined model on demand"""
+    model_path = 'model.py/best_model(both).h5'
     if not os.path.exists(model_path):
         logger.error(f"Model file not found: {model_path}")
         raise FileNotFoundError(f"Model file not found: {model_path}")
     try:
-        logger.info("Loading AP model")
+        logger.info("Loading combined model")
         model = tf.keras.models.load_model(model_path)
-        logger.info("AP model loaded successfully")
+        logger.info("Combined model loaded successfully")
         return model
     except Exception as e:
-        logger.error(f"Failed to load AP model: {str(e)}")
+        logger.error(f"Failed to load combined model: {str(e)}")
         raise
 
 def allowed_file(filename, app):
@@ -147,7 +147,7 @@ def analyze():
         return jsonify({'success': False, 'error': f'Failed to save image: {str(e)}'}), 500
 
     try:
-        # Load and predict with the AP model
+        # Load and predict with the combined model
         model = load_model()
         processed = preprocess_image(filepath, target_size=(224, 224))
         pred = model.predict(processed, verbose=0)
@@ -160,7 +160,7 @@ def analyze():
         del model
         tf.keras.backend.clear_session()
         gc.collect()
-        logger.info("AP model unloaded")
+        logger.info("Combined model unloaded")
 
     except Exception as e:
         logger.error(f"Prediction failed: {str(e)}")
