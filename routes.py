@@ -43,7 +43,7 @@ def load_model(view):
 def allowed_file(filename, app):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-def preprocess_image(img_path, target_size=(64, 64)):
+def preprocess_image(img_path, target_size=(224, 224)):
     """Preprocess image for model prediction"""
     logger.info(f"Preprocessing image: {img_path}")
     img = tf.keras.utils.load_img(
@@ -150,7 +150,7 @@ def analyze():
     try:
         # Load and predict with selected model
         model = load_model(view)
-        processed = preprocess_image(filepath, target_size=(64, 64))
+        processed = preprocess_image(filepath, target_size=(224, 224))
         pred = model.predict(processed, verbose=0)
         gender = 'Female' if pred[0][0] > 0.5 else 'Male'
         conf = round(pred[0][0] * 100 if gender == 'Female' else (1 - pred[0][0]) * 100, 1)
