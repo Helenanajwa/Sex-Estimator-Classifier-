@@ -30,7 +30,7 @@ tf.random.set_seed(42)
 
 def load_model():
     """Load the combined model on demand"""
-    model_path = 'model.py/bestmodel(both).h5'
+    model_path = 'model.py/best_model(both).h5'
     if not os.path.exists(model_path):
         logger.error(f"Model file not found: {model_path}")
         raise FileNotFoundError(f"Model file not found: {model_path}")
@@ -172,3 +172,4 @@ def analyze():
         gc.collect()
 
     return jsonify({'success': True, 'result': result})
+
