@@ -30,7 +30,7 @@ tf.random.set_seed(42)
 
 def load_model():
     """Load the combined model on demand"""
-    model_path = 'model.py/best_model(both).h5'
+    model_path = 'model.py/bestmodel(both).h5'
     if not os.path.exists(model_path):
         logger.error(f"Model file not found: {model_path}")
         raise FileNotFoundError(f"Model file not found: {model_path}")
@@ -48,7 +48,7 @@ def allowed_file(filename, app):
 
 def preprocess_image(img_path, target_size=(224, 224)):
     """Preprocess image for model prediction"""
-    logger.info(f"Preprocessing image: {img_path}")
+    logger.info(f"Preprocessing image: {img_path} with target_size={target_size}")
     img = tf.keras.utils.load_img(
         img_path,
         color_mode='rgb',
