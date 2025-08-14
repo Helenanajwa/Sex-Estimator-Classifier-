@@ -25,19 +25,19 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
-def load_model():
-    """Load the AP model on demand"""
-    model_path = 'model.py/best_model_AP.h5'
+def load_model(view):
+    """Load the specified model (AP or Lateral) on demand"""
+    model_path = 'model.py/best_model_AP.h5' if view == 'ap' else 'model.py/best_model.h5'
     if not os.path.exists(model_path):
         logger.error(f"Model file not found: {model_path}")
         raise FileNotFoundError(f"Model file not found: {model_path}")
     try:
-        logger.info("Loading AP model")
+        logger.info(f"Loading {view.upper()} model")
         model = tf.keras.models.load_model(model_path)
-        logger.info("AP model loaded successfully")
+        logger.info(f"{view.upper()} model loaded successfully")
         return model
     except Exception as e:
-        logger.error(f"Failed to load AP model: {str(e)}")
+        logger.error(f"Failed to load {view.upper()} model: {str(e)}")
         raise
 
 def allowed_file(filename, app):
@@ -122,10 +122,14 @@ def collaborate():
 @main.route('/analyze/', methods=['POST'])
 def analyze():
     logger.info("Starting analyze route")
+    view = request.form.get('view')
     xray_image = request.files.get('xray_image')
     temp_files = []
 
     # Validate inputs
+    if not view or view not in ['ap', 'lat']:
+        logger.error("Invalid or missing view parameter")
+        return jsonify({'success': False, 'error': 'Invalid or missing view parameter'}), 400
     if not xray_image or xray_image.filename == '':
         logger.error("No image uploaded")
         return jsonify({'success': False, 'error': 'No image uploaded'}), 400
@@ -144,20 +148,20 @@ def analyze():
         return jsonify({'success': False, 'error': f'Failed to save image: {str(e)}'}), 500
 
     try:
-        # Load and predict with AP model
-        model = load_model()
+        # Load and predict with selected model
+        model = load_model(view)
         processed = preprocess_image(filepath, target_size=(64, 64))
         pred = model.predict(processed, verbose=0)
         gender = 'Female' if pred[0][0] > 0.5 else 'Male'
         conf = round(pred[0][0] * 100 if gender == 'Female' else (1 - pred[0][0]) * 100, 1)
         result = {'gender': gender, 'confidence': conf}
-        logger.info(f"AP prediction: gender={gender}, confidence={conf}")
+        logger.info(f"{view.upper()} prediction: gender={gender}, confidence={conf}")
 
         # Unload model
         del model
         tf.keras.backend.clear_session()
         gc.collect()
-        logger.info("AP model unloaded")
+        logger.info(f"{view.upper()} model unloaded")
 
     except Exception as e:
         logger.error(f"Prediction failed: {str(e)}")
