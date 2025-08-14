@@ -40,7 +40,11 @@
                                     • Maximum 1 image<br>• PNG, JPG, JPEG</p>
                                     <div class="upload-btn-group">
                                         <button type="button" class="upload-btn" onclick="document.getElementById('xray_image').click(); event.stopPropagation()">Choose File</button>
-                                        <button type="button" class="sample-btn" onclick="selectSample()">Select Sample Image</button>
+                                        <select id="sampleSelect" onchange="selectSample()">
+                                            <option value="">Select Sample Image</option>
+                                            <option value="ap_sample.jpg">AP Sample</option>
+                                            <option value="lat_sample1.jpg">Lateral Sample</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -151,11 +155,15 @@
         }
 
         function selectSample() {
-            fetch('/static/samples/ap_sample.jpg').then(res => {
-                if (!res.ok) throw new Error("Could not load sample image");
+            const sampleSelect = document.getElementById('sampleSelect');
+            const samplePath = sampleSelect.value;
+            if (!samplePath) return;
+
+            fetch(`/static/samples/${samplePath}`).then(res => {
+                if (!res.ok) throw new Error(`Could not load sample image: ${samplePath}`);
                 return res.blob();
             }).then(blob => {
-                selectedFile = new File([blob], 'ap_sample.jpg', {type: blob.type});
+                selectedFile = new File([blob], samplePath, {type: blob.type});
                 updatePreview();
             }).catch(err => {
                 showError("Sample Load Failed", err.message);
@@ -167,6 +175,7 @@
             document.getElementById('xray_image').value = '';
             document.getElementById('preview').innerHTML = '';
             document.getElementById('removeBtn').style.display = 'none';
+            document.getElementById('sampleSelect').value = '';
             hideError();
         }
 
