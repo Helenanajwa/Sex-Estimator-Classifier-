@@ -5,141 +5,170 @@ import numpy as np
 import os
 import logging
 import random
+import gc
 
 main = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
 
-# Optional: Set random seed for consistent predictions
+# Suppress TensorFlow logging to reduce overhead
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+# Force CPU usage and optimize TensorFlow
+tf.config.set_visible_devices([], 'GPU')
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+physical_devices = tf.config.list_physical_devices('GPU')
+if not physical_devices:
+    logger.info("No GPU detected, using CPU")
+else:
+    logger.warning(f"GPU detected but disabled: {physical_devices}")
+
+# Set random seed for consistent predictions
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
-# Load only the X-ray classifier at startup
-try:
-    xray_classifier = tf.keras.models.load_model('model.py/xray_classifier.h5')
-    logger.info("X-ray classifier loaded successfully")
-except Exception as e:
-    logger.error(f"X-ray classifier loading failed: {str(e)}")
-    raise
-
-# Lazy-loaded models (cache them so they load only once)
-model_lat = None
-model_ap = None
+def load_model():
+    """Load the combined model on demand"""
+    model_path = 'model.py/best_model(both).h5'
+    if not os.path.exists(model_path):
+        logger.error(f"Model file not found: {model_path}")
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+    try:
+        logger.info("Loading combined model")
+        model = tf.keras.models.load_model(model_path)
+        logger.info("Combined model loaded successfully")
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load combined model: {str(e)}")
+        raise
 
 def allowed_file(filename, app):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-def preprocess_image(img_path, target_size=(256, 256)):
+def preprocess_image(img_path, target_size=(224, 224)):
     """Preprocess image for model prediction"""
+    logger.info(f"Preprocessing image: {img_path} with target_size={target_size}")
     img = tf.keras.utils.load_img(
         img_path,
         color_mode='rgb',
         target_size=target_size
     )
     img_array = tf.keras.utils.img_to_array(img) / 255.0
-    return np.expand_dims(img_array, axis=0)
+    img_array = tf.expand_dims(img_array, axis=0)
+    gc.collect()
+    return img_array
 
-def is_xray_image(img_path):
-    """Check if the uploaded image is an X-ray using the classifier"""
-    processed_img = preprocess_image(img_path, target_size=(128, 128))
-    prediction = xray_classifier.predict(processed_img)
-    is_xray = prediction[0][0] > 0.7
-    confidence = float(prediction[0][0]) if is_xray else float(1 - prediction[0][0])
-    return is_xray, confidence
-
-def get_lateral_model():
-    """Lazy load Lateral view model"""
-    global model_lat
-    if model_lat is None:
-        logger.info("Loading Lateral view model...")
-        model_lat = tf.keras.models.load_model('model.py/best_model.h5')
-    return model_lat
-
-def get_ap_model():
-    """Lazy load AP view model"""
-    global model_ap
-    if model_ap is None:
-        logger.info("Loading AP view model...")
-        model_ap = tf.keras.models.load_model('model.py/best_model_AP.h5')
-    return model_ap
+def cleanup_files(file_list):
+    """Remove temporary uploaded files"""
+    for file_path in file_list:
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logger.info(f"Cleaned up file: {file_path}")
+            except Exception as e:
+                logger.error(f"Failed to clean up file {file_path}: {str(e)}")
 
 # ----------------- MAIN PAGES -----------------
 @main.route('/')
 def index():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))
     return render_template('index.html')
 
 @main.route('/home')
 def home():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))
     return render_template('home.html')
 
 @main.route('/confusion-matrix')
 def model_performance():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))
     return render_template('model_performance.html')
 
 @main.route('/research')
 def research():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))
     return render_template('research.html')
 
 @main.route('/collaborate')
 def collaborate():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))
     return render_template('collaborate.html')
 
 # ----------------- ANALYSIS ROUTE -----------------
 @main.route('/analyze', methods=['POST'])
+@main.route('/analyze/', methods=['POST'])
 def analyze():
-    view = request.form.get('view')
-    file = request.files.get('xray_image')
+    logger.info("Starting analyze route")
+    xray_image = request.files.get('xray_image')
+    temp_files = []
 
-    if not file or file.filename == '':
-        return jsonify({'success': False, 'error': 'No file uploaded'}), 400
-    if not view:
-        return jsonify({'success': False, 'error': 'No view selected'}), 400
+    # Validate inputs
+    if not xray_image or xray_image.filename == '':
+        logger.error("No image uploaded")
+        return jsonify({'success': False, 'error': 'No image uploaded'}), 400
+    if not allowed_file(xray_image.filename, current_app):
+        logger.error("Invalid file type for image")
+        return jsonify({'success': False, 'error': 'Invalid file type for image'}), 400
 
-    filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    file.save(filepath)
+    # Save image
+    filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(xray_image.filename))
+    try:
+        xray_image.save(filepath)
+        temp_files.append(filepath)
+        logger.info(f"Saved image: {filepath}")
+    except Exception as e:
+        logger.error(f"Failed to save image: {str(e)}")
+        return jsonify({'success': False, 'error': f'Failed to save image: {str(e)}'}), 500
 
     try:
-        # Step 1: Verify X-ray
-        is_xray, _ = is_xray_image(filepath)
-        if not is_xray:
-            os.remove(filepath)
-            return jsonify({'success': False, 'error': 'Uploaded image is not recognized as an X-ray'}), 400
-
-        # Step 2: Run the correct model
+        # Load and predict with the combined model
+        model = load_model()
         processed = preprocess_image(filepath, target_size=(224, 224))
-        if view == 'ap':
-            model_ap_loaded = get_ap_model()
-            pred = model_ap_loaded.predict(processed)
-        elif view == 'lateral':
-            model_lat_loaded = get_lateral_model()
-            pred = model_lat_loaded.predict(processed)
-        else:
-            os.remove(filepath)
-            return jsonify({'success': False, 'error': 'Invalid view type'}), 400
-
+        pred = model.predict(processed, verbose=0)
         gender = 'Female' if pred[0][0] > 0.5 else 'Male'
-        confidence = round(pred[0][0]*100 if gender == 'Female' else (1-pred[0][0])*100, 1)
+        conf = round(pred[0][0] * 100 if gender == 'Female' else (1 - pred[0][0]) * 100, 1)
+        result = {'gender': gender, 'confidence': conf}
+        logger.info(f"Prediction: gender={gender}, confidence={conf}")
 
-        # Return only the selected view's result
-        return jsonify({
-            'success': True,
-            'gender': gender,
-            'confidence': confidence,
-            'view': view
-        })
+        # Unload model
+        del model
+        tf.keras.backend.clear_session()
+        gc.collect()
+        logger.info("Combined model unloaded")
+
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Prediction failed: {str(e)}")
+        cleanup_files(temp_files)
+        return jsonify({'success': False, 'error': f'Prediction failed: {str(e)}'}), 500
+
     finally:
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        cleanup_files(temp_files)
+        gc.collect()
+
+    return jsonify({'success': True, 'result': result})
