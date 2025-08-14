@@ -1,5 +1,6 @@
 from flask import Flask
 from routes import main, load_models
+from auth import auth  # Import the auth blueprint
 import os
 import logging
 
@@ -19,6 +20,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 
 # Register blueprints
 app.register_blueprint(main)
+app.register_blueprint(auth)  # Register the auth blueprint
 logger.info("Blueprints registered successfully")
 
 # Log registered routes
