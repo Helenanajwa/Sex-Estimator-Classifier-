@@ -21,16 +21,30 @@
         }
         .sample-images-container {
             display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8); /* Semi-transparent overlay */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .sample-content {
+            display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            min-height: 300px; /* Ensure enough space for vertical centering */
-            margin-top: 20px;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 800px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
         .sample-images-container p {
-            color: white;
-            font-size: 1rem;
-            margin-bottom: 10px;
+            color: #000;
+            font-size: 1.2rem;
+            margin-bottom: 20px;
             text-align: center;
         }
         .sample-images {
@@ -88,11 +102,13 @@
 
                     <!-- Sample Image Thumbnails -->
                     <div class="sample-images-container" id="sampleModal">
-                        <p>Select one sample image below:</p>
-                        <div class="sample-images">
-                            <img src="/static/samples/ap_sample.jpg" onclick="handleSampleSelect(this)" class="sample-thumb" alt="AP Sample">
-                            <img src="/static/samples/lat_sample1.jpg" onclick="handleSampleSelect(this)" class="sample-thumb" alt="Lateral Sample 1">
-                            <img src="/static/samples/lat_sample2.jpg" onclick="handleSampleSelect(this)" class="sample-thumb" alt="Lateral Sample 2">
+                        <div class="sample-content">
+                            <p>Select one sample image below:</p>
+                            <div class="sample-images">
+                                <img src="/static/samples/ap_sample.jpg" onclick="handleSampleSelect(this)" class="sample-thumb" alt="AP Sample">
+                                <img src="/static/samples/lat_sample1.jpg" onclick="handleSampleSelect(this)" class="sample-thumb" alt="Lateral Sample 1">
+                                <img src="/static/samples/lat_sample2.jpg" onclick="handleSampleSelect(this)" class="sample-thumb" alt="Lateral Sample 2">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -162,7 +178,7 @@
 
         function showSampleModal() {
             const modal = document.getElementById('sampleModal');
-            modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+            modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
         }
 
         function handleSampleSelect(imgEl) {
@@ -276,6 +292,18 @@
         ['dragleave', 'drop'].forEach(ev => uploadArea.addEventListener(ev, e => { preventDefaults(e); unhighlight(); }));
         uploadArea.addEventListener('drop', handleDrop);
 
+        // Close modal when clicking outside the content
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('sampleModal');
+            const content = document.querySelector('.sample-content');
+            if (modal.style.display === 'flex' && !content.contains(e.target)) {
+                modal.style.display = 'none';
+            }
+            if (!document.getElementById('errorDisplay').contains(e.target)) {
+                hideError();
+            }
+        });
+
         async function runAnalysis() {
             if (!selectedFile) {
                 showError("No Image Uploaded", "Please upload or select an X-ray image to analyze");
@@ -320,12 +348,6 @@
                 document.getElementById('analyzeBtn').style.display = 'inline-block';
             }
         }
-
-        document.addEventListener('click', function(e) {
-            if (!document.getElementById('errorDisplay').contains(e.target)) {
-                hideError();
-            }
-        });
     </script>
 </body>
 </html>
