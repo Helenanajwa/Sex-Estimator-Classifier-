@@ -1,43 +1,36 @@
-import logging
-import os
 from flask import Flask
-from routes import main
-from auth import auth
+from routes import main, load_models
+import os
+import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'supersecretkey')
-
-# Configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-logging.info(f"Uploads directory created: {app.config['UPLOAD_FOLDER']}")
+app.config['SECRET_KEY'] = 'your-secret-key'  # Replace with a secure key
 
-# Log current working directory and contents
-logging.info(f"Current working directory: {os.getcwd()}")
-logging.info(f"Directory contents: {os.listdir('.')}")
+# Create uploads directory if it doesn't exist
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+    logger.info(f"Uploads directory created: {app.config['UPLOAD_FOLDER']}")
 
-# Register Blueprints
+# Register blueprints
+app.register_blueprint(main)
+logger.info("Blueprints registered successfully")
+
+# Log registered routes
+logger.info(f"Registered routes: {[rule.rule for rule in app.url_map.iter_rules()]}")
+
+# Load TensorFlow models at startup
 try:
-    app.register_blueprint(auth)
-    app.register_blueprint(main)
-    logging.info("Blueprints registered successfully")
-    logging.info(f"Registered routes: {[rule.rule for rule in app.url_map.iter_rules()]}")
+    load_models()
+    logger.info("Models loaded successfully during app initialization")
 except Exception as e:
-    logging.error(f"Failed to register blueprints: {str(e)}")
+    logger.error(f"Failed to initialize models: {str(e)}")
     raise
 
-# Basic root route for health check
-@app.route("/")
-def home():
-    logging.info("Root route accessed")
-    return "Sex Estimator Classifier API is running"
-
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 10000))  # Use Render's default port 10000
-    logging.info(f"Starting Flask app on port {port}")
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=True)  # Set debug=False in production
