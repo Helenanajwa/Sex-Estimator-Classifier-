@@ -33,11 +33,6 @@
                     <div class="upload-section">
                         <h2>X-ray Image Upload</h2>
                         <form id="upload-form" enctype="multipart/form-data">
-                            <label for="view">Select X-ray View:</label>
-                            <select id="view" name="view" required>
-                                <option value="ap">AP View</option>
-                                <option value="lat">Lateral View</option>
-                            </select><br>
                             <div class="upload-area" id="uploadArea">
                                 <div class="upload-content">
                                     <div class="upload-icon">📁</div>
@@ -84,7 +79,7 @@
                             <div class="view-card" id="resultBox">
                                 <div class="view-header">
                                     <i class="fas fa-check-circle"></i>
-                                    <span id="viewTitle">Analysis</span>
+                                    <span>X-ray Analysis</span>
                                 </div>
                                 <div class="view-probability">
                                     Probability <span id="confidenceValue">--%</span>
@@ -156,13 +151,11 @@
         }
 
         function selectSample() {
-            const view = document.getElementById('view').value;
-            const sampleUrl = view === 'ap' ? '/static/samples/ap_sample.jpg' : '/static/samples/lat_sample1.jpg';
-            fetch(sampleUrl).then(res => {
+            fetch('/static/samples/ap_sample.jpg').then(res => {
                 if (!res.ok) throw new Error("Could not load sample image");
                 return res.blob();
             }).then(blob => {
-                selectedFile = new File([blob], `${view}_sample.jpg`, {type: blob.type});
+                selectedFile = new File([blob], 'ap_sample.jpg', {type: blob.type});
                 updatePreview();
             }).catch(err => {
                 showError("Sample Load Failed", err.message);
@@ -182,7 +175,6 @@
             document.getElementById('resultsSection').style.display = 'none';
             document.getElementById('globalActions').style.display = 'none';
             document.getElementById('analyzeBtn').style.display = 'inline-block';
-            document.getElementById('view').value = 'ap';
             hideError();
         }
 
@@ -231,7 +223,6 @@
 
             const formData = new FormData();
             formData.append('xray_image', selectedFile);
-            formData.append('view', document.getElementById('view').value);
 
             try {
                 const res = await fetch('/analyze', { method: 'POST', body: formData });
@@ -248,7 +239,6 @@
                     document.getElementById('globalActions').style.display = 'flex';
                     document.getElementById('overallGender').textContent = data.result.gender;
                     document.getElementById('overallConfidence').textContent = `Probability: ${data.result.confidence}%`;
-                    document.getElementById('viewTitle').textContent = `${document.getElementById('view').value.toUpperCase()} View Analysis`;
                     document.getElementById('confidenceValue').textContent = `${data.result.confidence}%`;
                     document.getElementById('confidenceFill').style.width = `${data.result.confidence}%`;
                 } else {
