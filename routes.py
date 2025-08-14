@@ -79,31 +79,51 @@ def cleanup_files(file_list):
 @main.route('/')
 def index():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))  # Fallback to home route
     return render_template('index.html')
 
 @main.route('/home')
 def home():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))  # Fallback to home route
     return render_template('home.html')
 
 @main.route('/confusion-matrix')
 def model_performance():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))  # Fallback to home route
     return render_template('model_performance.html')
 
 @main.route('/research')
 def research():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))  # Fallback to home route
     return render_template('research.html')
 
 @main.route('/collaborate')
 def collaborate():
     if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
+        try:
+            return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Failed to redirect to auth.login: {str(e)}")
+            return redirect(url_for('main.home'))  # Fallback to home route
     return render_template('collaborate.html')
 
 # ----------------- ANALYSIS ROUTE -----------------
