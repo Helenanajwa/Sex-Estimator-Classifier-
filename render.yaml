@@ -1,10 +1,9 @@
 services:
   - type: web
-    name: skull-xray-app
+    name: skull-estimator-classifier-
     env: python
     plan: free
-    branch: main  # Change if you're using a different GitHub branch
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    branch: main
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
+    startCommand: gunicorn -w 1 --timeout 600 -b 0.0.0.0:10000 app:app
     autoDeploy: true
-
