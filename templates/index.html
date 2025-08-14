@@ -38,7 +38,7 @@
             background-color: #fff;
             padding: 20px;
             border-radius: 10px;
-            max-width: 800px;
+            max-width: 600px; /* Adjusted for two images */
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
         .sample-images-container p {
@@ -177,6 +177,7 @@
 
         function showSampleModal() {
             const modal = document.getElementById('sampleModal');
+            console.log('Toggling modal display:', modal.style.display === 'none' ? 'flex' : 'none'); // Debug log
             modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
         }
 
