@@ -2,14 +2,14 @@
 .navbar {
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(12px);
-    padding: 10px clamp(15px, 3vw, 25px); /* Responsive padding */
+    padding: 10px clamp(15px, 3vw, 25px); 
     position: fixed;
     border-radius: 0px;
     top: 0;
-    left: 0; /* Explicit positioning */
+    left: 0; 
     width: 100%;
     z-index: 1000;
-    box-sizing: border-box; /* Include padding in width */
+    box-sizing: border-box; 
 }
 
 .navbar ul {
@@ -19,12 +19,11 @@
     padding: 0;
     display: flex;
     align-items: center;
-    gap: 12px; /* Modern gap instead of margin-right */
+    gap: 12px; 
 }
 
 .navbar li {
     position: relative;
-    /* Removed margin-right - using gap instead */
 }
 
 .navbar a {
@@ -85,21 +84,21 @@
 /* Enhanced logout button container */
 .logout-btn-container {
     margin-left: auto;
-    padding-right: clamp(10px, 2vw, 25px); /* Responsive padding */
-    position: static; /* More reliable than relative */
-    flex-shrink: 0; /* Prevent squeezing */
+    padding-right: clamp(10px, 2vw, 25px); 
+    position: static; 
+    flex-shrink: 0; 
 }
 
 /* Adaptive logout button */
 .logout-btn {
     padding: 8px;
-    width: clamp(36px, 8vw, 44px); /* Responsive sizing */
+    width: clamp(36px, 8vw, 44px); 
     height: clamp(36px, 8vw, 44px);
     background: rgba(255, 255, 255, 0.15);
     border: none;
     border-radius: 50%;
     color: white;
-    font-size: clamp(16px, 4vw, 18px); /* Responsive text */
+    font-size: clamp(16px, 4vw, 18px); 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -123,7 +122,7 @@
     }
     
     .navbar ul {
-        gap: 8px; /* Tighter spacing */
+        gap: 8px; 
     }
     
     .logout-btn {
@@ -204,6 +203,7 @@ body {
 /* ===== Upload Container ===== */
 .upload-container {
     display: flex;
+    justify-content: center ;
     gap: 30px;   
     flex-wrap: wrap;
     margin-bottom: 25px; 
@@ -434,9 +434,11 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.25);
     border-radius: 16px;
     padding: 30px;
-    margin: 20px 0;
+    margin: 20px auto;
     box-shadow: 0 5px 40px rgba(255, 255, 255, 0.738),
                 inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    max-width: 940px;
+    min-width: 350px;
 }
 
 .results-card {
@@ -458,7 +460,7 @@ body {
 }
 
 .results-subtitle {
-    font-size: 1rem;
+    font-size: 1.2rem;
     opacity: 0.85;
     text-align: center;
     color: #fcfcfc;
@@ -544,6 +546,7 @@ body {
     opacity: 0.8;
 }
 
+/* Buttons */
 .action-buttons-container {
     display: flex;
     justify-content: center;
@@ -554,7 +557,6 @@ body {
     flex-wrap: wrap;
 }
 
-/* Buttons */
 .btn-purple, .btn-blue {
     padding: 12px 24px;
     border-radius: 8px;
