@@ -6,55 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .sample-thumb {
-            width: 200px;
-            height: 200px;
-            object-fit: cover;
-            cursor: pointer;
-            border-radius: 10px;
-            transition: transform 0.2s;
-        }
-        .sample-thumb:hover {
-            transform: scale(1.05);
-        }
-        .sample-images-container {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.8); /* Semi-transparent overlay */
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .sample-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            max-width: 600px; /* Adjusted for two images */
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-        .sample-images-container p {
-            color: #000;
-            font-size: 1.2rem;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .sample-images {
-            display: flex;
-            justify-content: center;
-            gap: 25px;
-            flex-wrap: wrap;
-            padding: 10px;
-        }
-    </style>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     {% include 'navbar.html' %}
@@ -79,42 +31,49 @@
                 <!-- Upload Section -->
                 <div class="upload-container">
                     <div class="upload-section">
-                        <h2>X-ray Image Upload</h2>
-                        <form id="upload-form" enctype="multipart/form-data">
-                            <div class="upload-area" id="uploadArea">
-                                <div class="upload-content">
-                                    <div class="upload-icon">📁</div>
-                                    <p class="upload-desc">Drop your X-ray here<br>or click to browse files<br><br>
-                                    • Maximum 1 image<br>• PNG, JPG, JPEG (Max 5MB)</p>
-                                    <div class="upload-btn-group">
-                                        <button type="button" class="upload-btn" onclick="document.getElementById('xray_image').click(); event.stopPropagation()">Choose File</button>
-                                        <button type="button" class="sample-btn" onclick="showSampleModal()">Select Sample Image</button>
-                                    </div>
+                        <h2>Upload X-ray Image</h2>
+
+                        <!-- View Selector -->
+                        <div style="text-align:center; margin-bottom: 15px;">
+                            <label for="viewSelect" style="color:white; font-weight:500;">Select View:</label>
+                            <select id="viewSelect" name="viewSelect" style="padding:8px; border-radius:8px; border:none; margin-left:8px;">
+                                <option value="">-- Select View --</option>
+                                <option value="ap">AP View</option>
+                                <option value="lateral">Lateral View</option>
+                            </select>
+                        </div>
+
+                        <!-- Upload Area -->
+                        <div class="upload-area" id="uploadAreaSingle">
+                            <div class="upload-content">
+                                <div class="upload-icon">📁</div>
+                                <p class="upload-desc">
+                                    Drop your X-ray here<br>or click to browse your files<br><br>
+                                    • Maximum 1 image<br>• PNG, JPG, JPEG<br>• Ensure image is an AP or Lateral X-ray
+                                </p>
+                                <div class="upload-btn-group">
+                                    <button class="upload-btn" onclick="document.getElementById('fileInputSingle').click(); event.stopPropagation()">Choose File</button>
+                                    <button class="sample-btn" onclick="selectSample(); event.stopPropagation();">Select Sample Image</button>
                                 </div>
                             </div>
-                            <input type="file" id="xray_image" name="xray_image" class="file-input" accept="image/png,image/jpeg,image/jpg" onchange="updatePreview()">
-                            <div class="preview-container" id="preview"></div>
-                            <div style="text-align:center;">
-                                <button type="button" class="remove-btn" id="removeBtn" style="display:none;" onclick="removeImage()">Remove Image</button>
-                            </div>
-                        </form>
-                    </div>
+                        </div>
 
-                    <!-- Sample Image Thumbnails -->
-                    <div class="sample-images-container" id="sampleModal">
-                        <div class="sample-content">
-                            <p>Select one sample image below:</p>
-                            <div class="sample-images">
-                                <img src="/static/samples/ap_sample.jpg" onclick="handleSampleSelect(this)" class="sample-thumb" alt="AP Sample">
-                                <img src="/static/samples/lat_sample1.jpg" onclick="handleSampleSelect(this)" class="sample-thumb" alt="Lateral Sample 1">
-                            </div>
+                        <input type="file" id="fileInputSingle" name="xray_single" class="file-input" accept="image/*">
+
+                        <!-- Preview -->
+                        <div class="preview-container" id="previewSingle"></div>
+
+                        <div style="text-align:center;">
+                            <button class="remove-btn" id="removeSingleBtn" style="display:none;" onclick="removeImage()">Remove Image</button>
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
 
                 <!-- Analyze Button / Loader -->
                 <div class="analyze-btn-container">
-                    <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">🔍 Analyze Image</button>
+                    <button class="analyze-btn" id="analyzeBtn">🔍 Analyze Images</button>
                     <div id="loadingSpinner" style="display:none; text-align:center; margin-top:10px;">
                         <i class="fas fa-spinner fa-spin" style="font-size:1.5rem; color:#007bff;"></i>
                         <p style="color:white;">Analyzing, please wait...</p>
@@ -129,22 +88,39 @@
                         </div>
                         <h2 class="results-title">Result</h2>
                         <p class="results-subtitle">Radiograph</p>
+
+                        <!-- Main Gender Estimation -->
                         <div class="gender-estimation">
                             <h3>Sex Estimation</h3>
                             <div id="overallGender" class="gender-text">--</div>
-                            <p id="overallConfidence" class="confidence-text">Probability: --%</p>
+                            <p id="overallConfidence" class="confidence-text">Overall Probability: --%</p>
                         </div>
+
+                        <!-- AP & Lateral View Cards -->
                         <div class="view-results">
-                            <div class="view-card" id="resultBox">
+                            <div class="view-card" id="apResultBox" style="display:none;">
                                 <div class="view-header">
                                     <i class="fas fa-check-circle"></i>
-                                    <span>X-ray Analysis</span>
+                                    <span>AP View Analysis</span>
                                 </div>
                                 <div class="view-probability">
-                                    Probability <span id="confidenceValue">--%</span>
+                                    Probability <span id="apConfidenceValue">--%</span>
                                 </div>
                                 <div class="view-bar">
-                                    <div class="view-bar-fill" id="confidenceFill"></div>
+                                    <div class="view-bar-fill" id="apConfidenceFill"></div>
+                                </div>
+                            </div>
+
+                            <div class="view-card" id="latResultBox" style="display:none;">
+                                <div class="view-header">
+                                    <i class="fas fa-check-circle"></i>
+                                    <span>Lateral View Analysis</span>
+                                </div>
+                                <div class="view-probability">
+                                    Probability <span id="latConfidenceValue">--%</span>
+                                </div>
+                                <div class="view-bar">
+                                    <div class="view-bar-fill" id="latConfidenceFill"></div>
                                 </div>
                             </div>
                         </div>
@@ -153,205 +129,226 @@
 
                 <!-- Global Action Buttons -->
                 <div class="action-buttons-container" id="globalActions" style="display:none;">
-                    <button class="btn-purple" id="analyzeAgainBtn" onclick="runAnalysis()">🔄 Analyze Again</button>
-                    <button class="btn-blue" id="uploadNewBtn" onclick="resetForm()">📤 Upload New Image</button>
+                    <button class="btn-purple" id="analyzeAgainBtn">🔄 Analyze Again</button>
+                    <button class="btn-blue" id="uploadNewBtn">📤 Upload New Images</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        let selectedFile = null;
+        let apFile = null, latFile1 = null, latFile2 = null;
 
-        function showError(title, hint = "") {
-            const errorDisplay = document.getElementById('errorDisplay');
-            document.getElementById('errorTitle').textContent = title;
-            document.getElementById('errorHint').textContent = hint;
-            errorDisplay.style.display = 'block';
-            errorDisplay.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        let singleFile = null;
+
+// Error handling functions (unchanged)
+function showError(title, hint = "") {
+    const errorDisplay = document.getElementById('errorDisplay');
+    document.getElementById('errorTitle').textContent = title;
+    document.getElementById('errorHint').textContent = hint;
+    errorDisplay.style.display = 'block';
+    errorDisplay.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function hideError() {
+    document.getElementById('errorDisplay').style.display = 'none';
+}
+
+// Update preview for single image
+function updatePreviewSingle(files) {
+    const container = document.getElementById('previewSingle');
+    container.innerHTML = '';
+
+    // File validation
+    const invalidFiles = files.filter(file => {
+        const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+        return !validTypes.includes(file.type);
+    });
+
+    if (invalidFiles.length > 0) {
+        showError("Invalid File Type", "Please upload only JPG, JPEG, or PNG images");
+        return;
+    }
+
+    files.forEach(file => {
+        if (file.size > 5 * 1024 * 1024) {
+            showError("File Too Large", "Maximum file size is 5MB");
+            return;
         }
 
-        function hideError() {
-            document.getElementById('errorDisplay').style.display = 'none';
-        }
+        const reader = new FileReader();
+        reader.onload = ev => {
+            container.innerHTML = `<img src="${ev.target.result}" alt="Preview">`;
+        };
+        reader.readAsDataURL(file);
+    });
 
-        function showSampleModal() {
-            const modal = document.getElementById('sampleModal');
-            console.log('Toggling modal display:', modal.style.display === 'none' ? 'flex' : 'none'); // Debug log
-            modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
-        }
+    document.getElementById('removeSingleBtn').style.display = files.length ? 'inline-block' : 'none';
+}
 
-        function handleSampleSelect(imgEl) {
-            const src = `${window.location.origin}${imgEl.src.startsWith('/') ? imgEl.src : '/' + imgEl.src}`;
-            console.log('Fetching image from:', src); // Debug log
-            const reader = new FileReader();
+// Select sample image based on view
+function selectSample() {
+    const view = document.getElementById('viewSelect').value;
+    if (!view) {
+        showError("Select a View", "Please choose AP or Lateral before selecting a sample image.");
+        return;
+    }
 
-            fetch(src)
-                .then(res => {
-                    if (!res.ok) throw new Error(`Failed to load ${imgEl.alt}: ${res.statusText}`);
-                    return res.blob();
-                })
-                .then(blob => {
-                    selectedFile = new File([blob], `${imgEl.alt}.jpg`, { type: blob.type });
-                    console.log('File created:', selectedFile); // Debug log
-                    reader.onload = function(e) {
-                        const container = document.getElementById('preview');
-                        container.innerHTML = `<img src="${e.target.result}" alt="Preview" style="max-width: 100%; max-height: 400px;">`;
-                        document.getElementById('removeBtn').style.display = 'inline-block';
-                        document.getElementById('sampleModal').style.display = 'none';
-                        hideError();
-                    };
-                    reader.readAsDataURL(blob);
-                })
-                .catch(err => {
-                    console.error('Fetch error:', err); // Debug log
-                    showError("Image Load Error", `Failed to load ${imgEl.alt}: ${err.message}`);
-                });
-        }
+    let samplePaths = [];
 
-        function updatePreview() {
-            const container = document.getElementById('preview');
-            container.innerHTML = '';
-            const fileInput = document.getElementById('xray_image');
-            selectedFile = fileInput.files[0] || null;
+    if (view === "ap") {
+    samplePaths = ["/static/samples/ap_sample.jpg"];
+    } else if (view === "lateral") {
+        samplePaths = [
+            "/static/samples/lat_sample1.jpg"
+        ];
+    }
 
-            if (!selectedFile) {
-                document.getElementById('removeBtn').style.display = 'none';
-                document.getElementById('sampleModal').style.display = 'none';
-                return;
-            }
+    // Pick one sample at random
+    const samplePath = samplePaths[Math.floor(Math.random() * samplePaths.length)];
 
-            const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
-            if (!validTypes.includes(selectedFile.type)) {
-                showError("Invalid File Type", "Please upload only JPG, JPEG, or PNG images");
-                selectedFile = null;
-                fileInput.value = '';
-                document.getElementById('removeBtn').style.display = 'none';
-                return;
-            }
-
-            if (selectedFile.size > 5 * 1024 * 1024) {
-                showError("File Too Large", "Maximum file size is 5MB");
-                selectedFile = null;
-                fileInput.value = '';
-                document.getElementById('removeBtn').style.display = 'none';
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = ev => {
-                container.innerHTML = `<img src="${ev.target.result}" alt="Preview" style="max-width: 100%; max-height: 400px;">`;
-                document.getElementById('removeBtn').style.display = 'inline-block';
-                document.getElementById('sampleModal').style.display = 'none';
-                hideError();
-            };
-            reader.readAsDataURL(selectedFile);
-        }
-
-        function removeImage() {
-            selectedFile = null;
-            document.getElementById('xray_image').value = '';
-            document.getElementById('preview').innerHTML = '';
-            document.getElementById('removeBtn').style.display = 'none';
-            document.getElementById('sampleModal').style.display = 'none';
-            hideError();
-        }
-
-        function resetForm() {
-            removeImage();
-            document.getElementById('resultsSection').style.display = 'none';
-            document.getElementById('globalActions').style.display = 'none';
-            document.getElementById('analyzeBtn').style.display = 'inline-block';
-            hideError();
-        }
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        function highlight() {
-            document.getElementById('uploadArea').classList.add('upload-area-hover');
-        }
-
-        function unhighlight() {
-            document.getElementById('uploadArea').classList.remove('upload-area-hover');
-        }
-
-        function handleDrop(e) {
-            preventDefaults(e);
-            unhighlight();
-            const files = Array.from(e.dataTransfer.files);
-            if (files.length > 1) {
-                showError("Too Many Files", "Only one image is allowed.");
-                return;
-            }
-            selectedFile = files[0];
-            updatePreview();
-        }
-
-        // Drag and drop listeners
-        const uploadArea = document.getElementById('uploadArea');
-        ['dragenter', 'dragover'].forEach(ev => uploadArea.addEventListener(ev, e => { preventDefaults(e); highlight(); }));
-        ['dragleave', 'drop'].forEach(ev => uploadArea.addEventListener(ev, e => { preventDefaults(e); unhighlight(); }));
-        uploadArea.addEventListener('drop', handleDrop);
-
-        // Close modal when clicking outside the content
-        document.addEventListener('click', function(e) {
-            const modal = document.getElementById('sampleModal');
-            const content = document.querySelector('.sample-content');
-            if (modal.style.display === 'flex' && !content.contains(e.target)) {
-                modal.style.display = 'none';
-            }
-            if (!document.getElementById('errorDisplay').contains(e.target)) {
-                hideError();
-            }
+    fetch(samplePath)
+        .then(res => res.blob())
+        .then(blob => {
+            singleFile = new File([blob], samplePath.split('/').pop(), { type: blob.type });
+            updatePreviewSingle([singleFile]);
+        })
+        .catch(() => {
+            showError("Sample Load Failed", "Could not load sample image");
         });
+}
 
-        async function runAnalysis() {
-            if (!selectedFile) {
-                showError("No Image Uploaded", "Please upload or select an X-ray image to analyze");
-                return;
-            }
+// Remove uploaded image
+function removeImage() {
+    singleFile = null;
+    document.getElementById('fileInputSingle').value = '';
+    document.getElementById('previewSingle').innerHTML = '';
+    document.getElementById('removeSingleBtn').style.display = 'none';
+    hideError();
+}
 
-            document.getElementById('analyzeBtn').style.display = 'none';
-            document.getElementById('loadingSpinner').style.display = 'block';
-            document.getElementById('resultsSection').style.display = 'none';
-            document.getElementById('globalActions').style.display = 'none';
-            hideError();
+// File input listener
+document.getElementById('fileInputSingle').addEventListener('change', e => {
+    if (!e.target.files.length) return;
+    singleFile = e.target.files[0];
+    updatePreviewSingle(singleFile ? [singleFile] : []);
+});
 
-            const formData = new FormData();
-            formData.append('xray_image', selectedFile);
+// === Drag & Drop Support ===
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
 
-            try {
-                const res = await fetch('/analyze', { method: 'POST', body: formData });
-                if (!res.ok) {
-                    const errorData = await res.json().catch(() => ({}));
-                    throw new Error(errorData.error || `Server error: ${res.status}`);
-                }
-                const data = await res.json();
-                console.log("API Response:", data);
+function highlight(areaId) {
+    document.getElementById(areaId).classList.add('upload-area-hover');
+}
 
-                document.getElementById('loadingSpinner').style.display = 'none';
-                if (data.success) {
-                    document.getElementById('resultsSection').style.display = 'block';
-                    document.getElementById('globalActions').style.display = 'flex';
-                    document.getElementById('overallGender').textContent = data.result.gender;
-                    document.getElementById('overallConfidence').textContent = `Probability: ${data.result.confidence}%`;
-                    document.getElementById('confidenceValue').textContent = `${data.result.confidence}%`;
-                    document.getElementById('confidenceFill').style.width = `${data.result.confidence}%`;
-                    document.getElementById('confidenceFill').style.backgroundColor = data.result.gender === 'Male' ? '#4285f4' : '#dc6b82';
-                } else {
-                    showError("Analysis Failed", data.error || "Unknown error occurred");
-                    document.getElementById('analyzeBtn').style.display = 'inline-block';
-                }
-            } catch (err) {
-                console.error("Analysis error:", err);
-                showError("Error", err.message);
-                document.getElementById('loadingSpinner').style.display = 'none';
-                document.getElementById('analyzeBtn').style.display = 'inline-block';
-            }
+function unhighlight(areaId) {
+    document.getElementById(areaId).classList.remove('upload-area-hover');
+}
+
+function handleDropSingle(e) {
+    preventDefaults(e);
+    unhighlight('uploadAreaSingle');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 1) {
+        showError("Too Many Files", "Only one image allowed.");
+        return;
+    }
+    singleFile = files[0];
+    updatePreviewSingle(singleFile ? [singleFile] : []);
+}
+
+// Drag & Drop listeners
+const singleArea = document.getElementById('uploadAreaSingle');
+['dragenter', 'dragover'].forEach(ev => singleArea.addEventListener(ev, e => { preventDefaults(e); highlight('uploadAreaSingle'); }));
+['dragleave', 'drop'].forEach(ev => singleArea.addEventListener(ev, e => { preventDefaults(e); unhighlight('uploadAreaSingle'); }));
+singleArea.addEventListener('drop', handleDropSingle);
+
+// === Run Analysis ===
+async function runAnalysis() {
+    const view = document.getElementById('viewSelect').value;
+
+    if (!view) {
+        showError("View Not Selected", "Please select AP or Lateral before analyzing.");
+        return;
+    }
+    if (!singleFile) {
+        showError("No Image Uploaded", "Please upload an X-ray image to analyze.");
+        return;
+    }
+
+    // Show loading state
+    document.getElementById('analyzeBtn').style.display = 'none';
+    document.getElementById('loadingSpinner').style.display = 'block';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('globalActions').style.display = 'none';
+    hideError();
+
+    const formData = new FormData();
+    formData.append('view', view); // send view type to backend
+    formData.append('xray_image', singleFile);
+
+    try {
+        const res = await fetch('/analyze', { method: 'POST', body: formData });
+
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+
+        const data = await res.json();
+        document.getElementById('loadingSpinner').style.display = 'none';
+
+        if (data.success) {
+            document.getElementById('resultsSection').style.display = 'block';
+            document.getElementById('globalActions').style.display = 'flex';
+
+        // Hide both boxes first
+        document.getElementById('apResultBox').style.display = 'none';
+        document.getElementById('latResultBox').style.display = 'none';
+
+        // Show only the one chosen
+        if (view === "ap") {
+            document.getElementById('apResultBox').style.display = 'block';
+            document.getElementById('apConfidenceValue').textContent = `${data.confidence}%`;
+            document.getElementById('apConfidenceFill').style.width = `${data.confidence}%`;
+        } else if (view === "lateral") {
+            document.getElementById('latResultBox').style.display = 'block';
+            document.getElementById('latConfidenceValue').textContent = `${data.confidence}%`;
+            document.getElementById('latConfidenceFill').style.width = `${data.confidence}%`;
         }
+
+        document.getElementById('overallGender').textContent = data.gender;
+        document.getElementById('overallConfidence').textContent = `Overall Probability: ${data.confidence}%`;
+        } else {
+            showError("Analysis Failed", data.error || "Unknown error occurred during analysis");
+            document.getElementById('analyzeBtn').style.display = 'inline-block';
+        }
+    } catch (err) {
+        console.error("Analysis error:", err);
+        showError("Error", "An error occurred during analysis. Please check your file and try again.");
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('analyzeBtn').style.display = 'inline-block';
+    }
+}
+
+// Event listeners
+document.getElementById('analyzeBtn').addEventListener('click', runAnalysis);
+document.getElementById('analyzeAgainBtn').addEventListener('click', runAnalysis);
+document.getElementById('uploadNewBtn').addEventListener('click', () => {
+    removeImage();
+    document.getElementById('viewSelect').value = "";
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('globalActions').style.display = 'none';
+    document.getElementById('analyzeBtn').style.display = 'inline-block';
+    hideError();
+});
+
+// Hide error when clicking outside
+document.addEventListener('click', function (e) {
+    if (!document.getElementById('errorDisplay').contains(e.target)) {
+        hideError();
+    }
+});
     </script>
 </body>
 </html>
